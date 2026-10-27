@@ -1,0 +1,26 @@
+#!/bin/sh
+# codegraph-helper post-rewrite 模板（安装时由 install.sh 生成带实际端口/token 路径的版本）
+# git rebase 和 commit --amend 走这个 hook，post-commit 不会触发。
+# 注意这个 hook 的 stdin 是重写映射表，转调仓库本地同名 hook 时必须原样喂回去。
+
+URL="${CODEGRAPH_HELPER_URL:-http://127.0.0.1:9377}"
+TOKEN="${CODEGRAPH_HELPER_TOKEN:-$(cat "$HOME/.codegraph-helper/token" 2>/dev/null)}"
+
+# 先把 stdin 收下来，后面还得给本地 hook 用
+STDIN_TMP=$(mktemp -t codegraph-rewrite) || exit 0
+cat > "$STDIN_TMP"
+
+if repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+  curl -s -m 3 -G -X POST "$URL/hook" \
+    -H "X-Codegraph-Token: $TOKEN" \
+    --data-urlencode "repo=$repo_root" >/dev/null 2>&1 &
+fi
+
+HOOK_NAME=$(basename "$0")
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+if [ -n "$GIT_DIR" ] && [ -x "$GIT_DIR/hooks/$HOOK_NAME" ] && [ "$GIT_DIR/hooks/$HOOK_NAME" != "$0" ]; then
+  "$GIT_DIR/hooks/$HOOK_NAME" "$@" < "$STDIN_TMP"
+fi
+
+rm -f "$STDIN_TMP"
+exit 0

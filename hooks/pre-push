@@ -1,0 +1,10 @@
+#!/bin/sh
+# codegraph-helper 代理 hook：转调仓库本地同名 hook。
+# 设置了全局 core.hooksPath 后 git 会忽略仓库本地 hooks，这里还原原有行为。
+
+HOOK_NAME=$(basename "$0")
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+if [ -n "$GIT_DIR" ] && [ -x "$GIT_DIR/hooks/$HOOK_NAME" ]; then
+  exec "$GIT_DIR/hooks/$HOOK_NAME" "$@"
+fi
+exit 0

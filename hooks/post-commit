@@ -1,0 +1,20 @@
+#!/bin/sh
+# codegraph-helper post-commit 模板（安装时由 install.sh 生成带实际端口/token 路径的版本）
+# 1) 后台通知本地 sync 服务（3 秒超时，绝不阻塞 git 操作）
+# 2) 转调仓库本地同名 hook（core.hooksPath 会屏蔽本地 hooks，这里还原行为）
+
+URL="${CODEGRAPH_HELPER_URL:-http://127.0.0.1:9377}"
+TOKEN="${CODEGRAPH_HELPER_TOKEN:-$(cat "$HOME/.codegraph-helper/token" 2>/dev/null)}"
+
+if repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+  curl -s -m 3 -G -X POST "$URL/hook" \
+    -H "X-Codegraph-Token: $TOKEN" \
+    --data-urlencode "repo=$repo_root" >/dev/null 2>&1 &
+fi
+
+HOOK_NAME=$(basename "$0")
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+if [ -n "$GIT_DIR" ] && [ -x "$GIT_DIR/hooks/$HOOK_NAME" ] && [ "$GIT_DIR/hooks/$HOOK_NAME" != "$0" ]; then
+  "$GIT_DIR/hooks/$HOOK_NAME" "$@" &
+fi
+exit 0
