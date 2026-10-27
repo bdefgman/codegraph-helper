@@ -1,0 +1,14 @@
+#!/bin/sh
+# codegraph-helper (minimal) post-merge: notify run.sh in background, never block git.
+HOME_DIR="${CODEGRAPH_HELPER_HOME:-$HOME/.codegraph-helper}"
+
+if repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+  nohup "$HOME_DIR/run.sh" "$repo_root" "$(basename "$0")" </dev/null >>/dev/null 2>&1 &
+fi
+
+HOOK_NAME=$(basename "$0")
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+if [ -n "$GIT_DIR" ] && [ -x "$GIT_DIR/hooks/$HOOK_NAME" ] && [ "$GIT_DIR/hooks/$HOOK_NAME" != "$0" ]; then
+  "$GIT_DIR/hooks/$HOOK_NAME" "$@" &
+fi
+exit 0

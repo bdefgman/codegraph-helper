@@ -1,0 +1,10 @@
+#!/bin/sh
+# codegraph-helper proxy hook: chain to the repo-local hook of the same name.
+# Global core.hooksPath hides repo-local hooks; this restores them.
+
+HOOK_NAME=$(basename "$0")
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null) || exit 0
+if [ -n "$GIT_DIR" ] && [ -x "$GIT_DIR/hooks/$HOOK_NAME" ]; then
+  exec "$GIT_DIR/hooks/$HOOK_NAME" "$@"
+fi
+exit 0
