@@ -36,6 +36,22 @@ chmod +x "$INSTALL_DIR/server.py" \
   "$INSTALL_DIR/hooks/pre-commit" "$INSTALL_DIR/hooks/commit-msg" \
   "$INSTALL_DIR/hooks/pre-push" "$INSTALL_DIR/hooks/prepare-commit-msg"
 
+# ---------- 命令入口（按优先级放到 PATH 里第一个可写的目录） ----------
+CLI_LINK=""
+for dir in /opt/homebrew/bin /usr/local/bin "$HOME/.npm-global/bin"; do
+  if [ -d "$dir" ] && [ -w "$dir" ]; then
+    CLI_LINK="$dir/codegraph-helper"
+    break
+  fi
+done
+if [ -n "$CLI_LINK" ]; then
+  ln -sf "$INSTALL_DIR/server.py" "$CLI_LINK"
+  echo "==> 已创建命令入口: $CLI_LINK（roots list/add/remove 管理生效目录）"
+else
+  echo "WARN: PATH 中没有可写的目录，可手动执行: sudo ln -sf $INSTALL_DIR/server.py /usr/local/bin/codegraph-helper"
+  echo "      或直接用: python3 $INSTALL_DIR/server.py roots list"
+fi
+
 # ---------- 生成配置（已存在则保留） ----------
 if [ -f "$CONFIG" ]; then
   echo "==> 保留已有配置: $CONFIG"
@@ -54,8 +70,11 @@ else
   "token": "$TOKEN",
   "codegraph_bin": "$CODEGRAPH_BIN",
   "require_codegraph_index": true,
-  "repo_roots": ["$HOME/IdeaProjects"],
-  "sync_timeout_seconds": 600
+  "auto_init": true,
+  "repo_roots": [],
+  "exclude_roots": [],
+  "sync_timeout_seconds": 600,
+  "init_timeout_seconds": 1800
 }
 EOF
   chmod 600 "$CONFIG"
@@ -86,7 +105,8 @@ TOKEN="\${CODEGRAPH_HELPER_TOKEN:-\$(cat "$INSTALL_DIR/token" 2>/dev/null)}"
 if repo_root=\$(git rev-parse --show-toplevel 2>/dev/null); then
   curl -s -m 3 -G -X POST "\$URL/hook" \\
     -H "X-Codegraph-Token: \$TOKEN" \\
-    --data-urlencode "repo=\$repo_root" >/dev/null 2>&1 &
+    --data-urlencode "repo=\$repo_root" \\
+    --data-urlencode "source=\$(basename "\$0")" >/dev/null 2>&1 &
 fi
 
 HOOK_NAME=\$(basename "\$0")
@@ -115,7 +135,8 @@ cat > "\$STDIN_TMP"
 if repo_root=\$(git rev-parse --show-toplevel 2>/dev/null); then
   curl -s -m 3 -G -X POST "\$URL/hook" \\
     -H "X-Codegraph-Token: \$TOKEN" \\
-    --data-urlencode "repo=\$repo_root" >/dev/null 2>&1 &
+    --data-urlencode "repo=\$repo_root" \\
+    --data-urlencode "source=\$(basename "\$0")" >/dev/null 2>&1 &
 fi
 
 HOOK_NAME=\$(basename "\$0")

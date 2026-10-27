@@ -12,6 +12,11 @@ launchctl bootout "gui/$(id -u)/com.codegraph.helper" 2>/dev/null || launchctl u
 rm -f "$PLIST"
 echo "==> 已停止并移除 launchd 服务"
 
+for dir in /opt/homebrew/bin /usr/local/bin "$HOME/.npm-global/bin"; do
+  rm -f "$dir/codegraph-helper" 2>/dev/null || true
+done
+echo "==> 已移除命令入口 codegraph-helper"
+
 CURRENT_HOOKS=$(git config --global core.hooksPath || true)
 if [ "$CURRENT_HOOKS" = "$INSTALL_DIR/hooks" ]; then
   git config --global --unset core.hooksPath

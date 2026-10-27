@@ -5,8 +5,8 @@
 ## 功能
 
 - 在 `git commit`、`git checkout`、`git merge`、`git pull`、`git rebase`、`git commit --amend` 之后触发索引同步
-- 同步异步执行，不阻塞 git 操作
-- 仅对已执行 `codegraph init` 的仓库生效，不会自动创建索引
+- 同步/初始化均异步执行，不阻塞 git 操作
+- 仅对已执行 `codegraph init` 的仓库生效；开启 `auto_init` 后，首次触发会自动执行 `codegraph init`
 - 同一仓库的重复触发合并为一次补跑，避免并发写同一份索引
 
 ## 工作原理
@@ -18,7 +18,7 @@ git commit / switch / pull / rebase
         │  HTTP 通知，3 秒超时
         ▼
 本地服务 127.0.0.1:9377（launchd 托管，Python 标准库实现）
-        │  校验 token → 校验仓库位于 repo_roots → 校验 .codegraph/ 存在
+        │  校验 token → 校验仓库不在黑名单且在生效目录内 → 校验 .codegraph/ 存在
         ▼
 codegraph sync（异步执行，单次超时 600 秒）
 ```
@@ -46,7 +46,7 @@ git hook 只负责发送通知并立即返回，实际同步由服务端执行�
 4. 设置全局 `core.hooksPath` 指向 `~/.codegraph-helper/hooks`
 5. 调用 `/health` 完成健康检查
 
-脚本可重复执行，已存在的 `config.json` 不会被覆盖。
+脚本可重复执行，已存在的 `config.json` 不会被覆盖（升级时重新执行本脚本即可）。
 
 ## 配置（可选，正常使用无需修改）
 
@@ -61,11 +61,31 @@ launchctl kickstart -k gui/$(id -u)/com.codegraph.helper
 | `port` | `9377` | 监听端口，固定绑定 127.0.0.1 |
 | `token` | 安装时随机生成 | 请求头 `X-Codegraph-Token` 的期望值；留空时所有 `/hook` 请求返回 401 |
 | `codegraph_bin` | 安装时探测 | `codegraph` 可执行文件的绝对路径 |
-| `require_codegraph_index` | `true` | 为 `true` 时，缺少 `.codegraph/` 的仓库直接跳过 |
-| `repo_roots` | `[~/IdeaProjects]` | 允许同步的目录列表；为空数组时不放行任何仓库 |
+| `require_codegraph_index` | `true` | 为 `true` 时，缺少有效索引（`.codegraph/codegraph.db`）的仓库跳过或自动 init |
+| `repo_roots` | `[]` | 白名单目录列表；**为空时作用于所有 git 仓库**，非空时仅这些目录下的仓库生效 |
+| `exclude_roots` | `[]` | 黑名单目录列表；这些目录及其子目录下的仓库不会被触发 |
 | `sync_timeout_seconds` | `600` | 单次同步超时，超时后连同子进程一并终止 |
+| `auto_init` | `true` | 触发时仓库没有 `.codegraph/` 则自动 `codegraph init`（首次全量建索引，较慢） |
+| `init_timeout_seconds` | `1800` | 自动初始化的单次超时 |
 
-`repo_roots` 支持 `~` 与符号链接，服务启动时会展开为真实路径后比较。
+`repo_roots` / `exclude_roots` 支持 `~` 与符号链接，比较时展开为真实路径；改动实时生效，无需重启。
+
+## 目录管理（命令行）
+
+安装后可用 `codegraph-helper` 命令随时管理目录：
+
+```bash
+codegraph-helper roots list              # 查看白名单（空 = 作用于所有 git 仓库）
+codegraph-helper roots add ~/myRepo      # 只让某些目录生效时用（白名单非空则仅这些目录）
+codegraph-helper roots remove ~/myRepo
+
+codegraph-helper exclude list            # 查看黑名单
+codegraph-helper exclude add ~/temp      # 排除目录（其子目录一并失效）
+codegraph-helper exclude remove ~/temp
+```
+
+- 白名单为空 = 作用于所有 git 仓库；黑名单优先，其中的目录及子目录不会被触发（增量同步与自动 init 同样受此限制）
+- 服务每次请求实时读取配置，改动立即生效，无需重启
 
 ## 触发范围
 
