@@ -2,7 +2,7 @@
 
 一个本地小工具：commit / 切分支 / pull / rebase 后自动在后台执行 `codegraph sync`（无索引的仓库自动 `codegraph init`），让 [CodeGraph](https://github.com/colbymchenry/codegraph) 索引始终跟上代码，绝不阻塞 git。
 
-[English](./README.md)
+[English](./README.md) · **中文**
 
 ## 分支
 
