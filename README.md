@@ -1,108 +1,108 @@
 # codegraph-helper
 
-在 `git commit` 之后自动同步 codegraph 索引的本地服务。
+English | [中文](README.zh-CN.md)
 
-## 功能
+A local service that keeps [CodeGraph](https://github.com/colbymchenry/codegraph) indexes in sync automatically after git commits.
 
-- 在 `git commit`、`git checkout`、`git merge`、`git pull`、`git rebase`、`git commit --amend` 之后触发索引同步
-- 同步/初始化均异步执行，不阻塞 git 操作
-- 仅对已执行 `codegraph init` 的仓库生效；开启 `auto_init` 后，首次触发会自动执行 `codegraph init`
-- 同一仓库的重复触发合并为一次补跑，避免并发写同一份索引
+## Features
 
-## 工作原理
+- Triggers index sync after `git commit`, `git checkout`, `git merge`, `git pull`, `git rebase`, `git commit --amend`
+- Sync/init runs asynchronously, never blocks git operations
+- Only affects repos initialized with `codegraph init`; with `auto_init` enabled, the first trigger runs `codegraph init` automatically
+- Repeated triggers for the same repo coalesce into one follow-up run, avoiding concurrent writes to the same index
+
+## How it works
 
 ```
 git commit / switch / pull / rebase
         │
-        ▼  全局 git hook（core.hooksPath → ~/.codegraph-helper/hooks）
-        │  HTTP 通知，3 秒超时
+        ▼   global git hooks (core.hooksPath → ~/.codegraph-helper/hooks)
+        │   HTTP notification, 3s timeout
         ▼
-本地服务 127.0.0.1:9377（launchd 托管，Python 标准库实现）
-        │  校验 token → 校验仓库不在黑名单且在生效目录内 → 校验 .codegraph/ 存在
+local service 127.0.0.1:9377 (launchd-managed, Python stdlib only)
+        │   verify token → not blacklisted and within roots → .codegraph/ exists
         ▼
-codegraph sync（异步执行，单次超时 600 秒）
+codegraph sync (async, 600s timeout per run)
 ```
 
-git hook 只负责发送通知并立即返回，实际同步由服务端执行，因此 `git commit` 的耗时不受索引影响。
+The hook only sends a notification and returns immediately; the actual sync runs on the service, so commits are never slowed by indexing.
 
-## 环境要求
+## Requirements
 
-- macOS（使用 launchd 托管服务）
-- Python 3.7 及以上
-- git 2.13 及以上
-- 已安装 `codegraph` 命令行工具
+- macOS (launchd-managed service)
+- Python 3.7+
+- git 2.13+
+- `codegraph` CLI installed
 
-## 安装
+## Install
 
 ```bash
 ./install.sh
 ```
 
-安装脚本执行以下操作：
+The installer:
 
-1. 将服务脚本与 hooks 复制到 `~/.codegraph-helper/`
-2. 生成配置文件，token 随机生成
-3. 注册 launchd 服务 `com.codegraph.helper`，`RunAtLoad` 与 `KeepAlive` 均为 true
-4. 设置全局 `core.hooksPath` 指向 `~/.codegraph-helper/hooks`
-5. 调用 `/health` 完成健康检查
+1. copies the service script and hooks to `~/.codegraph-helper/`
+2. generates the config with a random token
+3. registers the launchd service `com.codegraph.helper` (`RunAtLoad` and `KeepAlive` both true)
+4. points global `core.hooksPath` to `~/.codegraph-helper/hooks`
+5. runs a `/health` check
 
-脚本可重复执行，已存在的 `config.json` 不会被覆盖（升级时重新执行本脚本即可）。
+Idempotent: re-run to upgrade; an existing `config.json` is kept.
 
-## 配置（可选，正常使用无需修改）
+## Config (optional — defaults just work)
 
-所有字段均有默认值，安装脚本自动生成（token 随机生成、`codegraph_bin` 自动探测为绝对路径），正常使用无需修改。只有需要调整时才编辑 `~/.codegraph-helper/config.json`，修改后需重启服务：
+All fields have defaults and are generated at install time (random token, `codegraph_bin` auto-detected as an absolute path). Edit `~/.codegraph-helper/config.json` only when needed, then restart the service:
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.codegraph.helper
 ```
 
-| 字段 | 默认值 | 说明 |
+| Field | Default | Description |
 | --- | --- | --- |
-| `port` | `9377` | 监听端口，固定绑定 127.0.0.1 |
-| `token` | 安装时随机生成 | 请求头 `X-Codegraph-Token` 的期望值；留空时所有 `/hook` 请求返回 401 |
-| `codegraph_bin` | 安装时探测 | `codegraph` 可执行文件的绝对路径 |
-| `require_codegraph_index` | `true` | 为 `true` 时，缺少有效索引（`.codegraph/codegraph.db`）的仓库跳过或自动 init |
-| `repo_roots` | `[]` | 白名单目录列表；**为空时作用于所有 git 仓库**，非空时仅这些目录下的仓库生效 |
-| `exclude_roots` | `[]` | 黑名单目录列表；这些目录及其子目录下的仓库不会被触发 |
-| `sync_timeout_seconds` | `600` | 单次同步超时，超时后连同子进程一并终止 |
-| `auto_init` | `true` | 触发时仓库没有 `.codegraph/` 则自动 `codegraph init`（首次全量建索引，较慢） |
-| `init_timeout_seconds` | `1800` | 自动初始化的单次超时 |
+| `port` | `9377` | listening port, bound to 127.0.0.1 |
+| `token` | random at install | expected value of the `X-Codegraph-Token` header; empty rejects all `/hook` requests with 401 |
+| `codegraph_bin` | detected at install | absolute path to the `codegraph` executable |
+| `require_codegraph_index` | `true` | repos without a valid index (`.codegraph/codegraph.db`) are skipped or auto-initialized |
+| `repo_roots` | `[]` | whitelist dirs; **empty = all git repos**, non-empty = only these dirs |
+| `exclude_roots` | `[]` | blacklist dirs; repos inside them (including subdirs) are never triggered |
+| `sync_timeout_seconds` | `600` | per-sync timeout; the process is killed on timeout |
+| `auto_init` | `true` | repos without `.codegraph/` get `codegraph init` on first trigger (full build, slower) |
+| `init_timeout_seconds` | `1800` | per-init timeout |
 
-`repo_roots` / `exclude_roots` 支持 `~` 与符号链接，比较时展开为真实路径；改动实时生效，无需重启。
+`repo_roots` / `exclude_roots` support `~` and symlinks (resolved before comparison). Changes take effect immediately — no restart needed.
 
-## 目录管理（命令行）
-
-安装后可用 `codegraph-helper` 命令随时管理目录：
+## Directory management (CLI)
 
 ```bash
-codegraph-helper roots list              # 查看白名单（空 = 作用于所有 git 仓库）
-codegraph-helper roots add ~/myRepo      # 只让某些目录生效时用（白名单非空则仅这些目录）
+codegraph-helper roots list              # show whitelist (empty = all git repos)
+codegraph-helper roots add ~/myRepo      # limit to certain dirs
 codegraph-helper roots remove ~/myRepo
 
-codegraph-helper exclude list            # 查看黑名单
-codegraph-helper exclude add ~/temp      # 排除目录（其子目录一并失效）
+codegraph-helper exclude list            # show blacklist
+codegraph-helper exclude add ~/temp      # exclude a dir (subdirs included)
 codegraph-helper exclude remove ~/temp
 ```
 
-- 白名单为空 = 作用于所有 git 仓库；黑名单优先，其中的目录及子目录不会被触发（增量同步与自动 init 同样受此限制）
-- 服务每次请求实时读取配置，改动立即生效，无需重启
+- Empty whitelist = all git repos; the blacklist takes priority (sync and auto-init both respect it)
+- The service reloads config on every request — changes apply immediately
 
-## 触发范围
+## Triggers
 
-| 操作 | 是否同步 | 对应 hook |
+| Operation | Syncs | Hook |
 | --- | --- | --- |
-| `git commit`（命令行或 IDE） | 是 | `post-commit` |
-| `git switch` / `git checkout <branch>` | 是 | `post-checkout` |
-| `git checkout -- <file>` | 是 | `post-checkout` |
-| `git pull` / `git merge` | 是 | `post-merge` |
-| `git rebase` / `git commit --amend` | 是 | `post-rewrite` |
-| `git restore` / `git stash pop` | 否 | git 未提供对应 hook，需手动执行 `codegraph sync` |
+| `git commit` (CLI or IDE) | yes | `post-commit` |
+| `git switch` / `git checkout <branch>` | yes | `post-checkout` |
+| `git checkout -- <file>` | yes | `post-checkout` |
+| `git pull` / `git merge` | yes | `post-merge` |
+| `git rebase` / `git commit --amend` | yes | `post-rewrite` |
+| `git restore` / `git stash pop` | no | no git hook exists; run `codegraph sync` manually |
 
-## 接口
+## HTTP API
 
 ### GET /health
 
-返回服务状态。
+Returns service status.
 
 ```json
 {"status": "ok"}
@@ -110,7 +110,7 @@ codegraph-helper exclude remove ~/temp
 
 ### POST /hook
 
-触发指定仓库的索引同步。需携带 `X-Codegraph-Token` 请求头，仓库路径通过查询参数传入。
+Triggers a sync for a repo. Requires the `X-Codegraph-Token` header; the repo path is passed as a query parameter.
 
 ```bash
 curl -G -X POST \
@@ -119,63 +119,63 @@ curl -G -X POST \
   http://127.0.0.1:9377/hook
 ```
 
-响应状态：
+Responses:
 
-| HTTP | 含义 |
+| HTTP | Meaning |
 | --- | --- |
-| 200 `started` | 已在后台启动同步 |
-| 200 `queued` | 该仓库正在同步，本次请求已合并为补跑 |
-| 200 `skipped` | 仓库缺少 `.codegraph/`，跳过 |
-| 400 | 路径缺失、非绝对路径、目录不存在或不是 git 仓库 |
-| 401 | token 缺失或不匹配 |
-| 403 | 仓库不在 `repo_roots` 范围内，或 `repo_roots` 为空 |
+| 200 `started` | sync started in the background |
+| 200 `queued` | a sync is already running; this trigger coalesced into a follow-up run |
+| 200 `skipped` | repo has no valid index |
+| 400 | missing path, non-absolute path, dir missing, or not a git repo |
+| 401 | token missing or mismatched |
+| 403 | repo outside `repo_roots` or in `exclude_roots` |
 
-## 日志与故障排查
+## Logs & troubleshooting
 
-- 运行日志：`~/Library/Logs/codegraph-helper.log`
-- 异常栈：`~/Library/Logs/codegraph-helper.err.log`
+- Runtime log: `~/Library/Logs/codegraph-helper.log`
+- Error log: `~/Library/Logs/codegraph-helper.err.log`
 
-排查顺序：
+Troubleshooting order:
 
-1. `launchctl list | grep codegraph` 确认服务进程存在
-2. 检查日志中是否出现「跳过」或 `401`
-3. 确认目标仓库位于 `repo_roots` 内，且已存在 `.codegraph/`
+1. `launchctl list | grep codegraph` — is the service running?
+2. Check the log for `skipped` or `401`
+3. Confirm the repo is within `repo_roots` and has a valid `.codegraph/`
 
-`codegraph_bin` 必须配置为绝对路径。launchd 的 `PATH` 与登录 shell 不同，仅写命令名通常无法解析。
+`codegraph_bin` must be an absolute path: launchd's `PATH` differs from the login shell, so a bare command name usually won't resolve.
 
-## 已知限制
+## Known limitations
 
-**未覆盖的 hook 会失效。** 设置全局 `core.hooksPath` 后，git 不再读取各仓库的 `.git/hooks`。本工具提供 8 个 hook 还原原有行为：
+**Uncovered hooks stop working.** With a global `core.hooksPath`, git no longer reads each repo's `.git/hooks`. This tool ships 8 hooks to restore behavior:
 
-- 通知类：`post-commit`、`post-checkout`、`post-merge`、`post-rewrite`，先通知服务再转调仓库本地同名 hook
-- 纯代理：`pre-commit`、`commit-msg`、`prepare-commit-msg`、`pre-push`，仅转调，行为与原来一致
+- Notify: `post-commit`, `post-checkout`, `post-merge`, `post-rewrite` — notify the service, then chain to the repo-local hook
+- Proxy only: `pre-commit`, `commit-msg`, `prepare-commit-msg`, `pre-push` — chain to the repo-local hook unchanged
 
-其余 hook 名称（如 `pre-rebase`、`reference-transaction`）将不再生效。使用 husky 等依赖其他 hook 的工具时需提前确认。
+Other hook names (e.g. `pre-rebase`, `reference-transaction`) no longer work. Verify before adopting tools like husky that rely on other hooks.
 
-**其他：**
+**Also:**
 
-- `git restore`、`git stash pop` 无对应 hook，索引会短暂落后
-- 跨仓库同步无全局并发上限，批量操作时可能同时启动多个 `codegraph` 进程
-- 同步被超时终止时，索引文件可能处于中间状态，需重新执行 `codegraph sync`
+- `git restore` / `git stash pop` have no hook; the index may lag briefly
+- No global concurrency limit across repos; bulk operations may start several `codegraph` processes at once
+- When a sync is killed by timeout, the index may be left in an intermediate state; run `codegraph sync` again
 
-## 环境变量
+## Environment variables
 
-| 变量 | 作用 |
+| Variable | Purpose |
 | --- | --- |
-| `CODEGRAPH_HELPER_CONFIG` | 服务读取的配置文件路径，默认 `~/.codegraph-helper/config.json` |
-| `CODEGRAPH_HELPER_HOME` | `install.sh` 的安装目录，默认 `~/.codegraph-helper` |
-| `CODEGRAPH_HELPER_PORT` | `install.sh` 生成配置时写入的端口 |
-| `CODEGRAPH_HELPER_URL` | hook 覆盖服务地址 |
-| `CODEGRAPH_HELPER_TOKEN` | hook 覆盖 token |
+| `CODEGRAPH_HELPER_CONFIG` | config file path used by the service, default `~/.codegraph-helper/config.json` |
+| `CODEGRAPH_HELPER_HOME` | install dir used by `install.sh`, default `~/.codegraph-helper` |
+| `CODEGRAPH_HELPER_PORT` | port written into the config at install time |
+| `CODEGRAPH_HELPER_URL` | hook override for the service URL |
+| `CODEGRAPH_HELPER_TOKEN` | hook override for the token |
 
-## 卸载
+## Uninstall
 
 ```bash
 ./uninstall.sh
 ```
 
-卸载脚本执行以下操作：
+The uninstaller:
 
-1. 停止并移除 launchd 服务
-2. 全局 `core.hooksPath` 指向本工具时清除，指向其他位置时保持不变
-3. 询问是否删除安装目录，默认保留
+1. stops and removes the launchd service
+2. clears the global `core.hooksPath` only if it points to this tool
+3. asks whether to delete the install dir (kept by default)
