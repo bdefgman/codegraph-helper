@@ -1,8 +1,8 @@
 # codegraph-helper
 
-A tiny local tool that keeps [CodeGraph](https://github.com/colbymchenry/codegraph) indexes fresh automatically — after every commit / branch switch / pull / rebase, it runs `codegraph sync` (or `codegraph init` for repos without an index) in the background, without ever blocking git.
+English | [中文](README.zh-CN.md)
 
-**English** · [中文说明](./README.zh-CN.md)
+A tiny local tool that keeps [CodeGraph](https://github.com/colbymchenry/codegraph) indexes fresh automatically — after every commit / branch switch / pull / rebase, it runs `codegraph sync` (or `codegraph init` for repos without an index) in the background, without ever blocking git.
 
 ## Branches
 
